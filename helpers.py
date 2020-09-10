@@ -1,16 +1,19 @@
+#Libraries for Web Scraping process
 import requests
 from bs4 import BeautifulSoup
 from  IPython.core.display import clear_output
+
+#Libraries for Data Wrangling and Data Cleaning
 import numpy as np
 import re
-
 from itertools import groupby
 import pandas as pd
 
 
 def webscraping_jobs(search,pages):
+    """ START OF  WEB SCRAPING CODE"""
 
-    #Listas donde se guardará la información 
+    #Create new lists to store information 
 
     titles = []
     regions = []
@@ -19,33 +22,38 @@ def webscraping_jobs(search,pages):
     profiles = []
     target_urls = []
 
-
+    #create the target url of the main webpage based on the search parameter (This is different for each webpage) 
     front_url = "trabajo-de-"+search.replace(" ","-")
     back_url = search.replace(" ", "%20")
     main_url = 'https://www.computrabajo.cl/'
 
-    #Obtener lista con urls de ofertas de trabajo por cada pagina principal de busqueda
-    print("Iniciando Web Scraping...")
     
+    print("Running Web Scraping...")
+
+    #Iterate over the  number of  pages to extract the information on the  job offers containers.
     for page in range(1,pages+1):
 
         url = main_url + front_url + "?q=" + back_url +'&p=' + str(page)
         main_response = requests.get(url)
         main_soup = BeautifulSoup(main_response.text,'html.parser')
         soup_urls = main_soup.find_all('a',class_='js-o-link')
-
+        
+        # Iterate over each of the job offers containers to obtain the url for each job offer and append the results into the list target_urls 
         for uri in soup_urls:
             target_urls.append(main_url+uri['href'])
 
-    #Iterar por cada una de las ofertas de trabajo para obtener informacion 
 
+    #Iterate for each of the urls on target_urls list to extract the  target information of each job offer.
     for target in target_urls:  
 
 
         response = requests.get(target)
         soup = BeautifulSoup(response.text,'html.parser')
 
-        #Separar el codigo html de la url en los dos frames principales
+        #Separate the HTML code  of each job offer page in 2 main distributions (description and table)
+        #(this is different for each webpage)
+
+        #Obtain the frame of description 
         try:
             description_frame = soup.find_all('ul',class_='p0 m0')[0]
             table_frame = soup.find_all('ul',class_='p0 m0')[1]
@@ -53,7 +61,7 @@ def webscraping_jobs(search,pages):
             pass
 
 
-        #Informacion del frame de tabla
+        #extract the main features of frame table and store them in the lists created above
         try: 
             temp_title = table_frame.find_all('p')[0]
             titles.append(temp_title.text)
@@ -76,7 +84,7 @@ def webscraping_jobs(search,pages):
         except (AttributeError,IndexError):
             features.append("nan")
 
-        #Informacion del frame de descripsion
+        #extract the main features of frame description and store them in the lists created above
         try:
             temp_glosa = description_frame.find_all('li')[1]
             glosas.append(temp_glosa.text)
@@ -88,13 +96,18 @@ def webscraping_jobs(search,pages):
         except (AttributeError,IndexError):
             profiles.append("nan")
         
-        print(f"Extrayendo Ofertas Laborales para {search}: {len(titles)}")
+        print(f"Extracting Job Offers for {search}: {len(titles)}")
         clear_output(wait=True)
 
-    print("Web Scraping Finalizado!")
-    print(f"Total de Ofertas laborales extraidas: {len(titles)}")
+    print("Web Scraping Finished!")
+    print(f"Total Job Offers Extracted: {len(titles)}")
 
-    #creacion de listas donde se guardaran datos finales
+    """ END  OF WEB SCRAPING CODE"""
+
+
+    """ START OF DATA WRANGLING AND DATA CLEANING CODE"""
+
+    #Create new lists to store final features
 
     companies = []
     contracts = []
@@ -105,7 +118,7 @@ def webscraping_jobs(search,pages):
     experience = []
     regs = []
 
-    #extraccion de valores objetivo de lista general feature
+    #extract the target values of each feature from  the lists created using the web scraping
     for feature in features:
         if len(feature)==2:
             contracts.append(feature[0])
@@ -130,7 +143,7 @@ def webscraping_jobs(search,pages):
             journeys.append(feature[2])
             salaries.append("nan")
 
-    #extraer informacion  de criterio viajes,residencia y experiencia  con regex
+    #clean  text values of travels, residence and experience using regex 
     for profile in profiles:
         for prop in profile:
             reg_travel = re.findall(r"viajar:\s\w*",str(prop))
@@ -146,10 +159,11 @@ def webscraping_jobs(search,pages):
         
         if not reg_exp in profile:
             experience.append("nan")
-
+        
+    #Extract the information of education 
     education =  [str(t[0]) for t in profiles]
-    
-    #limpiar listas de criterios viajes, residencias, experiencias, titulo
+
+    #Clean lists of features travels, residence, experience and title
     experience = [x for y in (list(amount) if value != "nan" else ["nan"] * (len(list(amount))-1)
                     for value, amount in groupby(experience)) for x in y if x]
     experience = [s.replace("['experiencia: ","").replace("']","") for s in experience]
@@ -166,7 +180,7 @@ def webscraping_jobs(search,pages):
     
     
 
-    #Filtrar y limpiar regiones
+    #Filter by region and clean values
     regions2 = [s.split("-") for s in regions]
     for region in regions2:
         if len(region)==1:
@@ -174,10 +188,11 @@ def webscraping_jobs(search,pages):
         if len(region)==2:
             regs.append(region[1])
 
+    #mantain the same length of  experience and titles features (to avoid length conflicts)
     if len(experience) != len(titles):
         experience.append("nan")
 
-    
+    #Store the final features on Data Frame
     df = pd.DataFrame({'oferta':titles,'region':regs,'empresa':companies,'salario':salaries,'experiencia':experience,'viajes':travels,
                       'residencia':residence,'jornada':journeys,'contrato':contracts,'educacion':education,'glosa':glosas,'url':target_urls})
 
